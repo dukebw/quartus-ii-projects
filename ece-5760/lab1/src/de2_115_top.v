@@ -173,19 +173,19 @@ module de2_115_top(
     // HSMC (LVDS) Connector
     //input             HSMC_CLKIN_N1,
     //input             HSMC_CLKIN_N2,
-    input wire HSMC_CLKIN_P1,
-    input wire HSMC_CLKIN_P2,
-    input wire HSMC_CLKIN0,
+    /* input wire HSMC_CLKIN_P1, */
+    /* input wire HSMC_CLKIN_P2, */
+    /* input wire HSMC_CLKIN0, */
     //output             HSMC_CLKOUT_N1,
     //output             HSMC_CLKOUT_N2,
-    output wire HSMC_CLKOUT_P1,
-    output wire HSMC_CLKOUT_P2,
-    output wire HSMC_CLKOUT0,
-    inout wire [3:0] HSMC_D,
+    /* output wire HSMC_CLKOUT_P1, */
+    /* output wire HSMC_CLKOUT_P2, */
+    /* output wire HSMC_CLKOUT0, */
+    /* inout wire [3:0] HSMC_D, */
     //input     [16:0] HSMC_RX_D_N,
-    input wire [16:0] HSMC_RX_D_P,
+    /* input wire [16:0] HSMC_RX_D_P, */
     //output     [16:0] HSMC_TX_D_N,
-    output wire [16:0] HSMC_TX_D_P,
+    /* output wire [16:0] HSMC_TX_D_P, */
 
     // Extend IO
     inout wire [6:0] EX_IO
@@ -215,6 +215,21 @@ module de2_115_top(
    assign AUD_DACDAT = 1'b0;
    assign AUD_XCK    = 1'b0;
 
+   // Disable ethernet.
+   assign ENET0_GTX_CLK = 1'b0;
+   assign ENET0_MDC = 1'b0;
+   assign ENET0_RST_N = 1'b0;
+   assign ENET0_TX_DATA = 4'b0;
+   assign ENET0_TX_EN = 1'b0;
+   assign ENET0_TX_ER = 1'b0;    // GMII and MII transmit error 1
+
+   assign ENET1_GTX_CLK = 1'b0;
+   assign ENET1_MDC = 1'b0;
+   assign ENET1_RST_N = 1'b0;
+   assign ENET1_TX_DATA = 4'b0;
+   assign ENET1_TX_EN = 1'b0;
+   assign ENET1_TX_ER = 1'b0;    // GMII and MII transmit error 1
+
    // Disable DRAM.
    assign DRAM_ADDR  = 12'h0;
    assign DRAM_BA    = 1'b0;
@@ -223,6 +238,7 @@ module de2_115_top(
    assign DRAM_CLK   = 1'b0;
    assign DRAM_CS_N  = 1'b1;
    assign DRAM_DQ    = 32'hzzzzzzzz;
+   assign DRAM_DQM   = 4'hF;
    assign DRAM_RAS_N = 1'b1;
    assign DRAM_WE_N  = 1'b1;
 
@@ -235,6 +251,7 @@ module de2_115_top(
    assign FL_OE_N  = 1'b1;
    assign FL_RST_N = 1'b1;
    assign FL_WE_N  = 1'b1;
+   assign FL_WP_N = 1'b0;
 
    // Disable LCD.
    assign LCD_BLON = 1'b0;
@@ -251,6 +268,12 @@ module de2_115_top(
    assign OTG_RD_N    = 1'b1;
    assign OTG_RST_N   = 1'b1;
    assign OTG_WR_N    = 1'b1;
+
+   // Disable PS2/.
+   assign PS2_CLK = 1'b0;
+   assign PS2_DAT = 1'b0;
+   assign PS2_CLK2 = 1'b0;
+   assign PS2_DAT2 = 1'b0;
 
    // Disable SDRAM.
    assign SD_DAT = 4'bz;
@@ -272,19 +295,25 @@ module de2_115_top(
    assign VGA_SYNC_N = 1'b0;
    assign VGA_HS    = 1'b0;
    assign VGA_VS    = 1'b0;
-   assign VGA_R     = 10'h0;
-   assign VGA_G     = 10'h0;
-   assign VGA_B     = 10'h0;
+   assign VGA_R     = 8'h0;
+   assign VGA_G     = 8'h0;
+   assign VGA_B     = 8'h0;
+
+   // Disable UART.
+   assign UART_TXD = 1'b0;
+   assign UART_CTS = 1'b0;
 
    // Disable all other peripherals.
    assign I2C_SCLK = 1'b0;
    assign I2C_SDAT = 1'bz;     
-   assign I2C_SCLK = 1'bz;
 
    assign TD_RESET_N = 1'b0;
-   assign UART_TXD = 1'b0;
 
    assign EEP_I2C_SDAT = 1'bz;
    assign EEP_I2C_SCLK = 1'bz;      
+
+   assign SMA_CLKOUT = 1'b0;
+
+   assign EX_IO = 7'h00;
 
 endmodule
