@@ -289,16 +289,6 @@ module de2_115_top(
    assign SRAM_UB_N = 1'b1;
    assign SRAM_WE_N = 1'b1;
 
-   // Disable VGA.
-   assign VGA_CLK   = 1'b0;
-   assign VGA_BLANK_N = 1'b0;
-   assign VGA_SYNC_N = 1'b0;
-   assign VGA_HS    = 1'b0;
-   assign VGA_VS    = 1'b0;
-   assign VGA_R     = 8'h0;
-   assign VGA_G     = 8'h0;
-   assign VGA_B     = 8'h0;
-
    // Disable UART.
    assign UART_TXD = 1'b0;
    assign UART_CTS = 1'b0;
@@ -315,5 +305,20 @@ module de2_115_top(
    assign SMA_CLKOUT = 1'b0;
 
    assign EX_IO = 7'h00;
+
+   vga_clk_pll vga_clk_pll_inst(.inclk0(CLOCK_50), .c0(VGA_CLK));
+
+   vga_controller vga_controller_inst(.vga_red_o(VGA_R),
+                                      .vga_green_o(VGA_G),
+                                      .vga_blue_o(VGA_B),
+                                      .vga_sync_n_o(VGA_SYNC_N),
+                                      .vga_blank_n_o(VGA_BLANK_N),
+                                      .vga_horizontal_sync_o(VGA_HS),
+                                      .vga_vertical_sync_o(VGA_VS),
+                                      .clock_i(VGA_CLK),
+                                      .reset_i(KEY[0]),
+                                      .red_i(8'hFF),
+                                      .green_i(8'b0),
+                                      .blue_i(8'b0));
 
 endmodule
