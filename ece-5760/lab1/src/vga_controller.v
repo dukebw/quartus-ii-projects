@@ -1,6 +1,8 @@
 `include "vga_controller.vh"
 
-module vga_controller(output reg [7:0] vga_red_o,
+module vga_controller(output reg [9:0] x_pixel_coord_o,
+                      output reg [9:0] y_pixel_coord_o,
+                      output reg [7:0] vga_red_o,
                       output reg [7:0] vga_green_o,
                       output reg [7:0] vga_blue_o,
                       output wire vga_sync_n_o,
@@ -15,6 +17,7 @@ module vga_controller(output reg [7:0] vga_red_o,
 
     reg [9:0] horizontal_cycle_count;
     reg [9:0] vertical_cycle_count;
+    wire is_outside_visible_region;
 
     // SYNC can be left as 0 so that green channel is not encoded specially
     assign vga_sync_n_o = 1'b0;
@@ -42,12 +45,21 @@ module vga_controller(output reg [7:0] vga_red_o,
 
     // Vsync timing is similar, except a vsync pulse signifies the end of one frame.
 
+    // Address LUT calculation
+    always @* begin
+        if (`IS_OUTSIDE_VISIBLE_REGION(horizontal_cycle_count + 10'h2, vertical_cycle_count)) begin
+            x_pixel_coord_o = 10'b0;
+            y_pixel_coord_o = 10'b0;
+        end
+        else begin
+            x_pixel_coord_o = (horizontal_cycle_count + 10'h2) - (`H_SYNC_CYCLES + `H_BACK_PORCH_CYCLES);
+            y_pixel_coord_o = vertical_cycle_count - (`V_SYNC_CYCLES + `V_BACK_PORCH_CYCLES);
+        end
+    end
+
     // Assign output colours based on HSYNC, VSYNC
     always @* begin
-        if ((horizontal_cycle_count <= (`H_SYNC_CYCLES + `H_BACK_PORCH_CYCLES)) ||
-            (horizontal_cycle_count >= `H_FRONT_PORCH_START) ||
-            (vertical_cycle_count <= (`V_SYNC_CYCLES + `V_BACK_PORCH_CYCLES)) ||
-            (vertical_cycle_count >= `V_FRONT_PORCH_START)) begin
+        if (`IS_OUTSIDE_VISIBLE_REGION(horizontal_cycle_count, vertical_cycle_count)) begin
             vga_red_o = 8'b0;
             vga_green_o = 8'b0;
             vga_blue_o = 8'b0;

@@ -308,7 +308,15 @@ module de2_115_top(
 
    vga_clk_pll vga_clk_pll_inst(.inclk0(CLOCK_50), .c0(VGA_CLK));
 
-   vga_controller vga_controller_inst(.vga_red_o(VGA_R),
+   wire [9:0] x_pixel_coord;
+   wire [9:0] y_pixel_coord;
+   wire [7:0] red = (x_pixel_coord[7:0] + y_pixel_coord[7:0]) & 8'hFF;
+   wire [7:0] green = (x_pixel_coord[7:0] + y_pixel_coord[7:0] + 8'h55) & 8'hFF;
+   wire [7:0] blue = (x_pixel_coord[7:0] + y_pixel_coord[7:0] + 8'hAA) & 8'hFF;
+
+   vga_controller vga_controller_inst(.x_pixel_coord_o(x_pixel_coord),
+                                      .y_pixel_coord_o(y_pixel_coord),
+                                      .vga_red_o(VGA_R),
                                       .vga_green_o(VGA_G),
                                       .vga_blue_o(VGA_B),
                                       .vga_sync_n_o(VGA_SYNC_N),
@@ -317,8 +325,8 @@ module de2_115_top(
                                       .vga_vertical_sync_o(VGA_VS),
                                       .clock_i(VGA_CLK),
                                       .reset_i(KEY[0]),
-                                      .red_i(8'hFF),
-                                      .green_i(8'b0),
-                                      .blue_i(8'b0));
+                                      .red_i(red),
+                                      .green_i(green),
+                                      .blue_i(blue));
 
 endmodule

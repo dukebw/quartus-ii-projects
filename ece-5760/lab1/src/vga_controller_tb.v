@@ -24,7 +24,12 @@ module vga_controller_tb;
         #800000 $finish;
     end
 
-    vga_controller vga_controller_inst(.vga_red_o(vga_red),
+    reg [9:0] x_pixel_coord;
+    reg [9:0] y_pixel_coord;
+
+    vga_controller vga_controller_inst(.x_pixel_coord_o(x_pixel_coord),
+                                       .y_pixel_coord_o(y_pixel_coord),
+                                       .vga_red_o(vga_red),
                                        .vga_green_o(vga_green),
                                        .vga_blue_o(vga_blue),
                                        .vga_sync_n_o(vga_sync_n),
