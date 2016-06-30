@@ -1,2 +1,4 @@
 *.qpf
 *cscope*
+*.bak
+*.qpf

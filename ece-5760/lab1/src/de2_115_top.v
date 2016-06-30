@@ -314,6 +314,14 @@ module de2_115_top(
    wire [7:0] green = (x_pixel_coord[7:0] + y_pixel_coord[7:0] + 8'h55) & 8'hFF;
    wire [7:0] blue = (x_pixel_coord[7:0] + y_pixel_coord[7:0] + 8'hAA) & 8'hFF;
 
+   cellular_automaton cellular_automaton_inst(.red_o(red),
+                                              .green_o(green),
+                                              .blue_o(blue),
+                                              .x_pixel_coord_i(x_pixel_coord),
+                                              .y_pixel_coord_i(y_pixel_coord),
+                                              .clock_i(VGA_CLK),
+                                              .reset_i(KEY[0]));
+
    vga_controller vga_controller_inst(.x_pixel_coord_o(x_pixel_coord),
                                       .y_pixel_coord_o(y_pixel_coord),
                                       .vga_red_o(VGA_R),
