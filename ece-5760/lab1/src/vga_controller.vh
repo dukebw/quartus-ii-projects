@@ -10,6 +10,7 @@
 `define V_FRONT_PORCH_CYCLES    10'hA // 10
 `define V_FRONT_PORCH_START     (`V_SYNC_CYCLES + `V_BACK_PORCH_CYCLES + `VERTICAL_HEIGHT_PIXELS)
 `define VERTICAL_CYCLES_MAX     (`V_SYNC_CYCLES + `V_BACK_PORCH_CYCLES + `VERTICAL_HEIGHT_PIXELS + `V_FRONT_PORCH_CYCLES)
+`define H_ADDRESS_LEAD_CYCLES   10'h1
 
 `define IS_OUTSIDE_VISIBLE_REGION(horizontal_cycle_count, vertical_cycle_count) \
     (((horizontal_cycle_count) < (`H_SYNC_CYCLES + `H_BACK_PORCH_CYCLES)) ||    \

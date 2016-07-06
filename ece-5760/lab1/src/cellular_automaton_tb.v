@@ -12,26 +12,26 @@ module cellular_automaton_tb;
     wire [7:0] blue;
     reg test_first_line;
 
-    task increment_or_reset_pixel_coord(inout pixel_coord, input max_pixel_coord);
-        if (pixel_coord == max_pixel_coord) begin
-            pixel_coord <= 1'b0;
+    function [9:0] increment_or_reset_pixel_coord(input [9:0] pixel_coord, input [9:0] max_pixel_coord);
+        begin
+            if (pixel_coord == max_pixel_coord) begin
+                increment_or_reset_pixel_coord = 1'b0;
+            end
+            else begin
+                increment_or_reset_pixel_coord = pixel_coord + 10'b1;
+            end
         end
-        else begin
-            pixel_coord <= pixel_coord + 10'b1;
-        end
-    endtask
+    endfunction
 
     always begin
         #5 clock = ~clock;
     end
 
     always @(posedge clock) begin
-        increment_or_reset_pixel_coord(x_pixel_coord, `MAX_X_PIXEL_COORD);
-    end
+        x_pixel_coord <= increment_or_reset_pixel_coord(x_pixel_coord, `MAX_X_PIXEL_COORD);
 
-    always @(posedge clock) begin
         if (x_pixel_coord == `MAX_X_PIXEL_COORD) begin
-            increment_or_reset_pixel_coord(y_pixel_coord, `MAX_Y_PIXEL_COORD);
+            y_pixel_coord <= increment_or_reset_pixel_coord(y_pixel_coord, `MAX_Y_PIXEL_COORD);
         end
     end
 
@@ -61,7 +61,7 @@ module cellular_automaton_tb;
             test_first_line = 1;
         end
         else if (x_pixel_coord == 320) begin
-            if ((red == 8'hFF) && (green == 8'hFF) && (blue == 8'hFF)) begin
+            if ((red == 8'h0) && (green == 8'h0) && (blue == 8'h0)) begin
                 test_first_line = 1;
             end
             else begin
@@ -69,7 +69,7 @@ module cellular_automaton_tb;
             end
         end
         else begin
-            if ((red == 8'h0) && (green == 8'h0) && (blue == 8'h0)) begin
+            if ((red == 8'hFF) && (green == 8'hFF) && (blue == 8'hFF)) begin
                 test_first_line = 1;
             end
             else begin

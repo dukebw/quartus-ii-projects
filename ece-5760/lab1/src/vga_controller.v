@@ -47,12 +47,12 @@ module vga_controller(output reg [9:0] x_pixel_coord_o,
 
     // Address LUT calculation
     always @* begin
-        if (`IS_OUTSIDE_VISIBLE_REGION(horizontal_cycle_count + 10'h2, vertical_cycle_count)) begin
+        if (`IS_OUTSIDE_VISIBLE_REGION(horizontal_cycle_count + `H_ADDRESS_LEAD_CYCLES, vertical_cycle_count)) begin
             x_pixel_coord_o = 10'b0;
             y_pixel_coord_o = 10'b0;
         end
         else begin
-            x_pixel_coord_o = (horizontal_cycle_count + 10'h2) - (`H_SYNC_CYCLES + `H_BACK_PORCH_CYCLES);
+            x_pixel_coord_o = (horizontal_cycle_count + `H_ADDRESS_LEAD_CYCLES) - (`H_SYNC_CYCLES + `H_BACK_PORCH_CYCLES);
             y_pixel_coord_o = vertical_cycle_count - (`V_SYNC_CYCLES + `V_BACK_PORCH_CYCLES);
         end
     end
@@ -72,8 +72,8 @@ module vga_controller(output reg [9:0] x_pixel_coord_o,
     end
 
     // H-Sync state machine
-    always @(posedge clock_i or negedge reset_i) begin
-        if (reset_i == 1'b0) begin
+    always @(posedge clock_i or posedge reset_i) begin
+        if (reset_i == 1'b1) begin
             vga_horizontal_sync_o <= 1'b0;
             horizontal_cycle_count <= 10'b0;
         end
@@ -93,8 +93,8 @@ module vga_controller(output reg [9:0] x_pixel_coord_o,
     end
 
     // V-Sync state machine
-    always @(posedge clock_i or negedge reset_i) begin
-        if (reset_i == 1'b0) begin
+    always @(posedge clock_i or posedge reset_i) begin
+        if (reset_i == 1'b1) begin
             vga_vertical_sync_o <= 1'b0;
             vertical_cycle_count <= 10'b0;
         end

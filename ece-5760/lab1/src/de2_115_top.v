@@ -270,10 +270,10 @@ module de2_115_top(
    assign OTG_WR_N    = 1'b1;
 
    // Disable PS2/.
-   assign PS2_CLK = 1'b0;
-   assign PS2_DAT = 1'b0;
-   assign PS2_CLK2 = 1'b0;
-   assign PS2_DAT2 = 1'b0;
+   assign PS2_CLK = 1'bz;
+   assign PS2_DAT = 1'bz;
+   assign PS2_CLK2 = 1'bz;
+   assign PS2_DAT2 = 1'bz;
 
    // Disable SDRAM.
    assign SD_DAT = 4'bz;
@@ -304,23 +304,54 @@ module de2_115_top(
 
    assign SMA_CLKOUT = 1'b0;
 
-   assign EX_IO = 7'h00;
+   assign EX_IO = 7'bzzzzzzz;
 
    vga_clk_pll vga_clk_pll_inst(.inclk0(CLOCK_50), .c0(VGA_CLK));
 
+   wire reset = ~KEY[0];
+
    wire [9:0] x_pixel_coord;
    wire [9:0] y_pixel_coord;
-   wire [7:0] red = (x_pixel_coord[7:0] + y_pixel_coord[7:0]) & 8'hFF;
-   wire [7:0] green = (x_pixel_coord[7:0] + y_pixel_coord[7:0] + 8'h55) & 8'hFF;
-   wire [7:0] blue = (x_pixel_coord[7:0] + y_pixel_coord[7:0] + 8'hAA) & 8'hFF;
+   wire [7:0] red;
+   wire [7:0] green;
+   wire [7:0] blue;
 
-   cellular_automaton cellular_automaton_inst(.red_o(red),
+   wire [10:0] mem_read_address;
+   wire [15:0] mem_read_data_s1;
+   wire [15:0] mem_read_data_s2;
+   wire [10:0] mem_write_address;
+   wire mem_write_enable;
+   wire [15:0] mem_write_data;
+
+   cellular_automaton cellular_automaton_inst(.mem_write_address_o(mem_write_address),
+                                              .mem_write_enable_o(mem_write_enable),
+                                              .mem_write_data_o(mem_write_data),
+                                              .mem_read_address_o(mem_read_address),
+                                              .red_o(red),
                                               .green_o(green),
                                               .blue_o(blue),
+                                              .mem_read_data_i(mem_read_data_s1),
                                               .x_pixel_coord_i(x_pixel_coord),
                                               .y_pixel_coord_i(y_pixel_coord),
                                               .clock_i(VGA_CLK),
-                                              .reset_i(KEY[0]));
+                                              .reset_i(reset));
+
+    ca_pixel_colours_m9k_block ca_pixel_colours_m9k_block_inst(.clk_clk(VGA_CLK),
+                                                               .onchip_memory2_0_s1_address(mem_read_address),
+                                                               .onchip_memory2_0_s1_clken(1'b1),
+                                                               .onchip_memory2_0_s1_chipselect(1'b1),
+                                                               .onchip_memory2_0_s1_write(1'b0), // Set to 0 since always read from s1
+                                                               .onchip_memory2_0_s1_readdata(mem_read_data_s1),
+                                                               .onchip_memory2_0_s1_writedata(16'b0),
+                                                               .onchip_memory2_0_s1_byteenable(2'b11),
+                                                               .onchip_memory2_0_s2_address(mem_write_address),
+                                                               .onchip_memory2_0_s2_chipselect(1'b1),
+                                                               .onchip_memory2_0_s2_clken(1'b1),
+                                                               .onchip_memory2_0_s2_write(mem_write_enable),
+                                                               .onchip_memory2_0_s2_readdata(mem_read_data_s2),
+                                                               .onchip_memory2_0_s2_writedata(mem_write_data),
+                                                               .onchip_memory2_0_s2_byteenable(2'b11),
+                                                               .reset_reset_n(reset));
 
    vga_controller vga_controller_inst(.x_pixel_coord_o(x_pixel_coord),
                                       .y_pixel_coord_o(y_pixel_coord),
@@ -332,7 +363,7 @@ module de2_115_top(
                                       .vga_horizontal_sync_o(VGA_HS),
                                       .vga_vertical_sync_o(VGA_VS),
                                       .clock_i(VGA_CLK),
-                                      .reset_i(KEY[0]),
+                                      .reset_i(reset),
                                       .red_i(red),
                                       .green_i(green),
                                       .blue_i(blue));
