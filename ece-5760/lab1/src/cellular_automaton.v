@@ -56,6 +56,7 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
     reg is_inside_visible_n2;
     reg is_inside_visible_n3;
     reg prev_row_pixel0_save;
+    wire next_random_bit;
 
     // Reset: how to force waiting until row 0 to start the state machine?
     // current_state bit
@@ -105,11 +106,21 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
             if (reset_i == 1'b1) begin
                 mem_write_address_o = {1'b0, reset_x_coord};
 
-                if (reset_x_coord == (`HORIZONTAL_WIDTH_PIXELS/2)) begin
-                    mem_write_data_o = `BLACK;
+                if (seed_or_random_i == 1'b0) begin
+                    if (reset_x_coord == (`HORIZONTAL_WIDTH_PIXELS/2)) begin
+                        mem_write_data_o = `BLACK;
+                    end
+                    else begin
+                        mem_write_data_o = `WHITE;
+                    end
                 end
                 else begin
-                    mem_write_data_o = `WHITE;
+                    if (next_random_bit == 1'b0) begin
+                        mem_write_data_o = `BLACK;
+                    end
+                    else begin
+                        mem_write_data_o = `WHITE;
+                    end
                 end
             end
             else begin
@@ -175,7 +186,7 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
     end
 
     // Synchronous reset, TODO(brendan): why, versus async reset?
-    // State machine, previous_row_state, reset handling?
+    // State machine, previous_row_state, reset handling
     always @(posedge clock_i) begin
         if ((reset_i == 1'b1) || (next_screen_i == 1'b1)) begin
             current_state <= `HAS_RESET;
@@ -184,15 +195,11 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
 
             // During reset, if SW[17] == 1, then use one pixel at x == 320.
             // If SW[17] == 0, use LFSR seeded with reset_x_coord to generate
-            if (seed_or_random_i == 1'b1) begin
-                if (reset_x_coord == `LAST_X_PIXEL) begin
-                    reset_x_coord <= 10'b0;
-                end
-                else begin
-                    reset_x_coord <= reset_x_coord + 10'b1;
-                end
+            if (reset_x_coord == `LAST_X_PIXEL) begin
+                reset_x_coord <= 10'b0;
             end
             else begin
+                reset_x_coord <= reset_x_coord + 10'b1;
             end
         end
         else begin
@@ -232,5 +239,9 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
             endcase
         end
     end
+
+    lfsr lfsr_inst(.next_random_bit_o(next_random_bit),
+                   .clock_i(clock_i),
+                   .reset_i(reset_i));
 
 endmodule
