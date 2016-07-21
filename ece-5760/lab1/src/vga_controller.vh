@@ -1,4 +1,5 @@
 `define HORIZONTAL_WIDTH_PIXELS 10'h280 // 640
+`define LAST_X_PIXEL            (`HORIZONTAL_WIDTH_PIXELS - 10'h1)
 `define VERTICAL_HEIGHT_PIXELS  10'h1E0 // 480
 `define H_SYNC_CYCLES           10'h60 // 96
 `define H_BACK_PORCH_CYCLES     10'h28 // 48

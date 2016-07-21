@@ -2,7 +2,7 @@
 
 `define HAS_RESET 2'b0
 `define DRAWING 2'b1
-`define WHITE 16'hFFF0
+`define WHITE 16'hFF00
 `define BLACK 16'b0
 
 // KEY0 will reset the state machine. The state machine will run at VGA clock rate.
@@ -30,22 +30,32 @@
 module cellular_automaton(output reg [10:0] mem_write_address_o,
                           output reg mem_write_enable_o,
                           output reg [15:0] mem_write_data_o,
-                          output wire [10:0] mem_read_address_o,
+                          output reg [10:0] mem_read_address_o,
                           output wire [7:0] red_o,
                           output wire [7:0] green_o,
                           output wire [7:0] blue_o,
+                          input wire is_inside_visible_region_i,
                           input wire [15:0] mem_read_data_i,
                           input wire [9:0] x_pixel_coord_i,
                           input wire [9:0] y_pixel_coord_i,
                           input wire clock_i,
-                          input wire reset_i);
+                          input wire reset_i,
+                          input wire next_screen_i,
+                          input wire seed_or_random_i);
 
     reg is_pixel_black;
     reg [1:0] current_state;
     reg [9:0] reset_x_coord;
+    reg [9:0] reset_x_coord_n1;
     // 3 bits representing whether the 3 squares above the currently calculating one were black
     reg [2:0] previous_row_state;
-    reg [9:0] prev_x_pixel_coord;
+    reg [9:0] x_pixel_coord_n1;
+    reg [9:0] x_pixel_coord_n2;
+    reg [9:0] x_pixel_coord_n3;
+    reg is_inside_visible_n1;
+    reg is_inside_visible_n2;
+    reg is_inside_visible_n3;
+    reg prev_row_pixel0_save;
 
     // Reset: how to force waiting until row 0 to start the state machine?
     // current_state bit
@@ -57,42 +67,64 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
     // How to fetch three pixels on reset?
     // On reset, store three pixels from first line in register
 
-    // TODO(bwd): verify whether the pixels read back are timed on the correct clock cycle
     assign red_o = {mem_read_data_i[15:12], 4'b0};
     assign green_o = {mem_read_data_i[11:8], 4'b0};
     assign blue_o = {mem_read_data_i[7:4], 4'b0};
 
-    assign mem_read_address_o = ((y_pixel_coord_i == 10'b0) ? {1'b0, x_pixel_coord_i} :
-                                                              {1'b0, x_pixel_coord_i} + `HORIZONTAL_WIDTH_PIXELS);
+    // After writing the first line, must use first clock cycle outside visible region to write pixel 639
+    // using pixels 0, 638 of the previous row (now overwritten), as well as pixel 639 of the previous row.
+    // Store pixel 0 and shift it into an extra previous_row_state variable.
+    always @* begin
+        if (next_screen_i == 1'b1) begin
+            mem_read_address_o = {1'b0, reset_x_coord} + (10'h2*`HORIZONTAL_WIDTH_PIXELS);
+        end
+        else begin
+            if (y_pixel_coord_i == 10'b0) begin
+                mem_read_address_o = {1'b0, x_pixel_coord_i};
+            end
+            else begin
+                mem_read_address_o = {1'b0, x_pixel_coord_i} + `HORIZONTAL_WIDTH_PIXELS;
+            end
+        end
+    end
+
+    wire [15:0] debug_mem_write_addr = {8'b0, mem_write_address_o[3:0], 4'b0};
 
     always @* begin
         // Memory:
         // [0:HORIZONTAL_WIDTH_PIXELS*16 bits) - Initial row
-        // [HORIZONTAL_WIDTH_PIXELS*16 bits:2*HORIZONTAL_WIDTH_PIXELS*16 bits) - Currently drawing and displaying row
+        // [HORIZONTAL_WIDTH_PIXELS*16 bits:2*HORIZONTAL_WIDTH_PIXELS*16 bits) - Currently drawing and
+        // displaying row
         // [2*HORIZONTAL_WIDTH_PIXELS*16 bits:3*HORIZONTAL_WIDTH_PIXELS*16 bits) - Final row (used to
         // initialize next screen on key press)
-        if (reset_i == 1'b1) begin
+        if ((reset_i == 1'b1) || (next_screen_i == 1'b1)) begin
             mem_write_enable_o = 1'b1;
-            mem_write_address_o = {1'b0, reset_x_coord};
 
             // Assume that reset is depressed for > 640 clock cycles, so that we can store the whole first row
             // in on-chip RAM. 640 clock cycles / 25.175Mcycles/second == 25.4*10^-6 == 25.4us
-            if (reset_x_coord == (`HORIZONTAL_WIDTH_PIXELS/2)) begin
-                mem_write_data_o = `BLACK;
+            if (reset_i == 1'b1) begin
+                mem_write_address_o = {1'b0, reset_x_coord};
+
+                if (reset_x_coord == (`HORIZONTAL_WIDTH_PIXELS/2)) begin
+                    mem_write_data_o = `BLACK;
+                end
+                else begin
+                    mem_write_data_o = `WHITE;
+                end
             end
             else begin
-                mem_write_data_o = `WHITE;
+                mem_write_address_o = {1'b0, reset_x_coord_n1};
+                mem_write_data_o = mem_read_data_i;
             end
         end
         else begin
-            mem_write_enable_o = 1'b1;
-            // Three cycles of delay: one to account for needing the first pixel, one to latch the correct
-            // write data, and one for the write to go through??
-            if (x_pixel_coord_i >= 10'h3) begin
-                mem_write_address_o = {1'b0, x_pixel_coord_i - 10'h3} + `HORIZONTAL_WIDTH_PIXELS;
+            mem_write_enable_o = is_inside_visible_n3;
+
+            if (y_pixel_coord_i == (`VERTICAL_HEIGHT_PIXELS - 10'h1)) begin
+                mem_write_address_o = x_pixel_coord_n3 + (10'h2*`HORIZONTAL_WIDTH_PIXELS);
             end
             else begin
-                mem_write_address_o = {1'b0, (`HORIZONTAL_WIDTH_PIXELS - x_pixel_coord_i - 1'b1)} + `HORIZONTAL_WIDTH_PIXELS;
+                mem_write_address_o = x_pixel_coord_n3 + `HORIZONTAL_WIDTH_PIXELS;
             end
 
             // Continually write to the previous x-coord pixel on the next row the value assigned from
@@ -100,51 +132,67 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
             // TODO(brendan): For now, hard-code rule 30
             case (previous_row_state)
                 3'b000: begin
-                    mem_write_data_o = `WHITE;
+                    mem_write_data_o = `WHITE | debug_mem_write_addr;
                 end
                 3'b001: begin
-                    mem_write_data_o = `WHITE;
+                    mem_write_data_o = `BLACK | debug_mem_write_addr;
                 end
                 3'b010: begin
-                    mem_write_data_o = `WHITE;
+                    mem_write_data_o = `BLACK | debug_mem_write_addr;
                 end
                 3'b011: begin
-                    mem_write_data_o = `BLACK;
+                    mem_write_data_o = `BLACK | debug_mem_write_addr;
                 end
                 3'b100: begin
-                    mem_write_data_o = `BLACK;
+                    mem_write_data_o = `BLACK | debug_mem_write_addr;
                 end
                 3'b101: begin
-                    mem_write_data_o = `BLACK;
+                    mem_write_data_o = `WHITE | debug_mem_write_addr;
                 end
                 3'b110: begin
-                    mem_write_data_o = `BLACK;
+                    mem_write_data_o = `BLACK | debug_mem_write_addr;
                 end
                 3'b111: begin
-                    mem_write_data_o = `WHITE;
+                    mem_write_data_o = `WHITE | debug_mem_write_addr;
                 end
                 default: begin
-                    mem_write_data_o = `WHITE;
+                    mem_write_data_o = `WHITE | debug_mem_write_addr;
                 end
             endcase
         end
     end
 
+    // Three cycles of delay: the read of whatever pixel was above us in memory takes one cycle, then
+    // two more cycles to get all three pixels into previous_row_state
     always @(posedge clock_i) begin
-        prev_x_pixel_coord <= x_pixel_coord_i;
+        x_pixel_coord_n1 <= x_pixel_coord_i;
+        x_pixel_coord_n2 <= x_pixel_coord_n1;
+        x_pixel_coord_n3 <= x_pixel_coord_n2;
+
+        is_inside_visible_n1 <= is_inside_visible_region_i;
+        is_inside_visible_n2 <= is_inside_visible_n1;
+        is_inside_visible_n3 <= is_inside_visible_n2;
     end
 
     // Synchronous reset, TODO(brendan): why, versus async reset?
+    // State machine, previous_row_state, reset handling?
     always @(posedge clock_i) begin
-        if (reset_i == 1'b1) begin
+        if ((reset_i == 1'b1) || (next_screen_i == 1'b1)) begin
             current_state <= `HAS_RESET;
             previous_row_state <= 3'b111;
+            reset_x_coord_n1 <= reset_x_coord;
 
-            if (reset_x_coord == (`HORIZONTAL_WIDTH_PIXELS - 1)) begin
-                reset_x_coord <= 10'b0;
+            // During reset, if SW[17] == 1, then use one pixel at x == 320.
+            // If SW[17] == 0, use LFSR seeded with reset_x_coord to generate
+            if (seed_or_random_i == 1'b1) begin
+                if (reset_x_coord == `LAST_X_PIXEL) begin
+                    reset_x_coord <= 10'b0;
+                end
+                else begin
+                    reset_x_coord <= reset_x_coord + 10'b1;
+                end
             end
             else begin
-                reset_x_coord <= reset_x_coord + 10'b1;
             end
         end
         else begin
@@ -157,8 +205,25 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
                     end
                 end
                 `DRAWING: begin
-                    if (x_pixel_coord_i != prev_x_pixel_coord) begin
+                    // previous_row_state should save the 639 pixel as it's written.
+                    // Then, on is_inside_visible_n1 and is_inside_visible_n2, previous_row_state should be
+                    // loading pixels 0 and 1.
+                    // Therefore these bits are buffered one clock cyle.
+                    // On is_inside_visible_n3, previous_row_state starts writing.
+                    if (is_inside_visible_n1) begin
                         previous_row_state <= {previous_row_state[1:0], mem_read_data_i[15]};
+                    end
+                    else if (is_inside_visible_n2) begin
+                        previous_row_state <= {previous_row_state[1:0], prev_row_pixel0_save};
+                    end
+                    else if (is_inside_visible_n3) begin
+                        previous_row_state <= {previous_row_state[1:0], mem_write_data_o[15]};
+                    end
+
+                    // x_pixel_coord_i will be 1 when the read from pixel 0 is in mem_read_data_i, so we save
+                    // pixel 0 when x_pixel_coord_i == 10'b1
+                    if (x_pixel_coord_i == 10'b1) begin
+                        prev_row_pixel0_save <= mem_read_data_i[15];
                     end
                 end
                 default: begin

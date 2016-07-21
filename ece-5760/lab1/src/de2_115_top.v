@@ -323,6 +323,8 @@ module de2_115_top(
    wire mem_write_enable;
    wire [15:0] mem_write_data;
 
+   wire is_outside_visible_region;
+
    cellular_automaton cellular_automaton_inst(.mem_write_address_o(mem_write_address),
                                               .mem_write_enable_o(mem_write_enable),
                                               .mem_write_data_o(mem_write_data),
@@ -330,11 +332,14 @@ module de2_115_top(
                                               .red_o(red),
                                               .green_o(green),
                                               .blue_o(blue),
+                                              .is_inside_visible_region_i(~is_outside_visible_region),
                                               .mem_read_data_i(mem_read_data_s1),
                                               .x_pixel_coord_i(x_pixel_coord),
                                               .y_pixel_coord_i(y_pixel_coord),
                                               .clock_i(VGA_CLK),
-                                              .reset_i(reset));
+                                              .reset_i(reset),
+                                              .next_screen_i(~KEY[3]),
+                                              .seed_or_random_i(~SW[17]));
 
     ca_pixel_colours_m9k_block ca_pixel_colours_m9k_block_inst(.clk_clk(VGA_CLK),
                                                                .onchip_memory2_0_s1_address(mem_read_address),
@@ -362,6 +367,7 @@ module de2_115_top(
                                       .vga_blank_n_o(VGA_BLANK_N),
                                       .vga_horizontal_sync_o(VGA_HS),
                                       .vga_vertical_sync_o(VGA_VS),
+                                      .is_outside_visible_region_o(is_outside_visible_region),
                                       .clock_i(VGA_CLK),
                                       .reset_i(reset),
                                       .red_i(red),
