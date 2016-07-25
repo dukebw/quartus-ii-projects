@@ -2,8 +2,9 @@
 
 `define HAS_RESET 2'b0
 `define DRAWING 2'b1
-`define WHITE 16'hFF00
+`define WHITE 16'h80F0
 `define BLACK 16'b0
+`define SELECT_COLOUR(rule_bit) ((rule_bit == 1'b0) ? `WHITE : `BLACK)
 
 // KEY0 will reset the state machine. The state machine will run at VGA clock rate.
 //
@@ -41,7 +42,8 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
                           input wire clock_i,
                           input wire reset_i,
                           input wire next_screen_i,
-                          input wire seed_or_random_i);
+                          input wire seed_or_random_i,
+                          input wire [7:0] rule_i);
 
     reg is_pixel_black;
     reg [1:0] current_state;
@@ -140,34 +142,33 @@ module cellular_automaton(output reg [10:0] mem_write_address_o,
 
             // Continually write to the previous x-coord pixel on the next row the value assigned from
             // the current rule.
-            // TODO(brendan): For now, hard-code rule 30
             case (previous_row_state)
                 3'b000: begin
-                    mem_write_data_o = `WHITE | debug_mem_write_addr;
+                    mem_write_data_o = `SELECT_COLOUR(rule_i[7]);
                 end
                 3'b001: begin
-                    mem_write_data_o = `BLACK | debug_mem_write_addr;
+                    mem_write_data_o = `SELECT_COLOUR(rule_i[6]);
                 end
                 3'b010: begin
-                    mem_write_data_o = `BLACK | debug_mem_write_addr;
+                    mem_write_data_o = `SELECT_COLOUR(rule_i[5]);
                 end
                 3'b011: begin
-                    mem_write_data_o = `BLACK | debug_mem_write_addr;
+                    mem_write_data_o = `SELECT_COLOUR(rule_i[4]);
                 end
                 3'b100: begin
-                    mem_write_data_o = `BLACK | debug_mem_write_addr;
+                    mem_write_data_o = `SELECT_COLOUR(rule_i[3]);
                 end
                 3'b101: begin
-                    mem_write_data_o = `WHITE | debug_mem_write_addr;
+                    mem_write_data_o = `SELECT_COLOUR(rule_i[2]);
                 end
                 3'b110: begin
-                    mem_write_data_o = `BLACK | debug_mem_write_addr;
+                    mem_write_data_o = `SELECT_COLOUR(rule_i[1]);
                 end
                 3'b111: begin
-                    mem_write_data_o = `WHITE | debug_mem_write_addr;
+                    mem_write_data_o = `SELECT_COLOUR(rule_i[0]);
                 end
                 default: begin
-                    mem_write_data_o = `WHITE | debug_mem_write_addr;
+                    mem_write_data_o = `WHITE;
                 end
             endcase
         end

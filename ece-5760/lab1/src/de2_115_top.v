@@ -339,7 +339,8 @@ module de2_115_top(
                                               .clock_i(VGA_CLK),
                                               .reset_i(reset),
                                               .next_screen_i(~KEY[3]),
-                                              .seed_or_random_i(~SW[17]));
+                                              .seed_or_random_i(~SW[17]),
+                                              .rule_i(SW[7:0]));
 
     ca_pixel_colours_m9k_block ca_pixel_colours_m9k_block_inst(.clk_clk(VGA_CLK),
                                                                .onchip_memory2_0_s1_address(mem_read_address),
