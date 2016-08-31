@@ -318,15 +318,15 @@ wire	VGA_CTRL_CLK;
 wire	AUD_CTRL_CLK;
 wire	DLY_RST;
 
-//sine wave gneerator
-reg [31:0]	DDS_accum;
+//sine wave generator
+reg [31:0]	DDS_accum, DDS_incr;
 wire signed [15:0] sine_out;
 
 //state variables
 reg signed [17:0] v1, v2 ;
 wire signed [17:0] v1new, v2new ;
 //signed mult output
-wire signed [17:0] v1xK_M, v2xD_M ;
+wire signed [17:0] v1xK_M, v2xD_M, Sinput ;
 // the clock divider
 reg [4:0] count;
 
@@ -351,25 +351,35 @@ AUDIO_DAC_ADC 			u4	(	//	Audio Side
 							.oAUD_DATA(AUD_DACDAT),
 							.oAUD_LRCK(AUD_DACLRCK),
 							.iAUD_ADCDAT(AUD_ADCDAT),
-							.iAUD_extL(v1[17:2]),
-							.iAUD_extR(v2[17:2]),
+							.iAUD_extL(sine_out),
+							.iAUD_extR(v1[17:2]),
 							//	Control Signals
 							.iSrc_Select(SW[17]),
 				            .iCLK_18_4(AUD_CTRL_CLK),
 							.iRST_N(DLY_RST)
 							);
 
-	/* DDS 
-	//Use switches to set freq
+	// DDS 
+	//Use KEY0  to set freq
+	always @ (posedge KEY[0])
+	begin
+		if (KEY[3]==0) //reset
+		begin	 
+			DDS_incr <=  32'h8000;
+			//count <= 0;
+		end
+		else
+		DDS_incr <= DDS_incr + 32'h100 ;
+	end
+	
 	always @ (posedge CLOCK_50) 
 	begin		
 		// generate 400/800 Hz
-		DDS_accum = DDS_accum + ((SW[0])? 32'hF5E7 : 32'h85E7) ;
+		DDS_accum = DDS_accum + DDS_incr ; //+ SW[16:0] ;
 	end
-	
 	//hook up the ROM table for 400 Hz modulation
 	sync_rom sineTable(CLOCK_50, DDS_accum[31:24], sine_out);
-	*/
+	
 	
 	//analog simulation of spring- mass
 	always @ (posedge CLOCK_50) 
@@ -378,8 +388,8 @@ AUDIO_DAC_ADC 			u4	(	//	Audio Side
 		
 		if (KEY[3]==0) //reset
 		begin	
-			v1 <= 32'h10000 ; // 
-			v2 <= 32'h00000 ;
+			v1 <= 32'h0_0000 ; // 
+			v2 <= 32'h1_0000 ;
 			//count <= 0;
 		end
 		
@@ -392,12 +402,15 @@ AUDIO_DAC_ADC 			u4	(	//	Audio Side
 	
 	// dt = 2>>9
 	// v1(n+1) = v1(n) + dt*v2(n)
-	assign v1new = v1 + (v2>>>9);
-	// v2(n+1) = v2(n) + dt*(-k/m*v1(n) - d/m*v2(n))
-	signed_mult K_M(v1xK_M, v1, 18'h10000);
-	signed_mult D_M(v2xD_M, v2, 18'h00800);
-	assign v2new = v2 - ((v1xK_M + v2xD_M)>>>9);
+	assign v1new = v1 + (v2>>>9)  ;
 	
+	// v2(n+1) = v2(n) + dt*(-k/m*v1(n) - d/m*v2(n))
+	signed_mult K_M(v1xK_M, v1, 18'h1_0000);
+	signed_mult D_M(v2xD_M, v2, 18'h0_0800); //18'h00800
+	//scale the input so that it does not saturate at resonance
+	signed_mult Sine_gain(Sinput,{sine_out[15],sine_out[15],sine_out}, 18'h0_4000);
+	assign v2new = v2 - ((v1xK_M + v2xD_M )>>>9) + (Sinput>>>9) ; //
+	 
 endmodule
 
 //////////////////////////////////////////////////
