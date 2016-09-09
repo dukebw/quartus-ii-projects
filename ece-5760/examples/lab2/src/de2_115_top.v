@@ -192,16 +192,17 @@ module de2_115_top(
 );
 
     // Turn off all displays.
-    assign HEX0 = 7'h7F;
-    assign HEX1 = 7'h7F;
+    /* assign HEX0 = 7'h7F; */
+    /* assign HEX1 = 7'h7F; */
     assign HEX2 = 7'h7F;
     assign HEX3 = 7'h7F;
-    assign HEX4 = 7'h7F;
-    assign HEX5 = 7'h7F;
+    /* assign HEX4 = 7'h7F; */
+    /* assign HEX5 = 7'h7F; */
     assign HEX6 = 7'h7F;
     assign HEX7 = 7'h7F;
     assign LEDR = 18'h0;
-    assign LEDG = 9'h0;
+    /* assign LEDG = 9'h0; */
+    assign LEDG[8] = 1'b0;
 
     // Set all GPIO to tri-state.
     assign GPIO = 36'hzzzzzzzzz;
@@ -330,69 +331,93 @@ module de2_115_top(
                                      .oAUD_inL(),
                                      .oAUD_inR(),
                                      .iAUD_ADCDAT(AUD_ADCDAT),
-                                     .iAUD_extR(v1[17:2]),
-                                     .iAUD_extL(v2[17:2]),
+                                     .iAUD_extR(v2[17:2]),
+                                     .iAUD_extL(v1[17:2]),
                                      // Control Signals
                                      .iCLK_18_4(audio_clk),
                                      .iRST_N(delayed_reset));
 
-    wire signed [17:0] a1;
-    wire signed [17:0] a2;
-    wire signed [17:0] b;
-    wire signed [17:0] c;
-    wire signed [17:0] d;
-    wire signed [17:0] I1;
-    wire signed [17:0] I2;
-    wire signed [17:0] v1;
-    wire signed [17:0] v2;
-    wire signed [17:0] u1;
-    wire spike1;
-    wire spike2;
+    // Sine wave generator
+    reg [31:0] dds_accum;
+    reg [10:0] dds_incr_count;
+    reg [31:0] dds_incr;
+    wire signed [15:0] sine_out;
 
-    reg [11:0] count;
-    wire neuron_clock;
-    wire neuron_reset;
+    reg signed [17:0] v1;
+    reg signed [17:0] v2;
+    wire signed [17:0] v1_new;
+    wire signed [17:0] v2_new;
+    wire signed [17:0] v1xK_M;
+    wire signed [17:0] v2xD_M;
+    wire signed [17:0] sine_input;
+    wire signed [17:0] sine_gain;
+    reg [4:0] count;
+    reg [7:0] phase;
+    reg [7:0] amplitude;
+    wire analog_reset;
 
-    // Clock divider
     always @(posedge CLOCK_50) begin
-        count <= count + 12'b1;
+        dds_accum = dds_accum + dds_incr;
     end
 
-    assign neuron_clock = (count == 0);
+    sync_rom sine_table(.sine_o(sine_out),
+                        .clock_i(CLOCK_50),
+                        .address_i(dds_accum[31:24]));
 
-    assign I1 = {2'h0, SW[15:0]};
-    assign I2 = {2'h0, SW[15:0]};
+    always @(posedge CLOCK_50) begin
+        count <= count + 1;
 
-    assign neuron_reset = ~KEY[3];
+        if (analog_reset == 0) begin
+            v1 <= 18'h0_0000;
+            v2 <= 18'h0_0000;
+        end
+        else if (count == 0) begin
+            v1 = v1_new;
+            v2 = v2_new;
+        end
+    end
 
-    //burster parameters
-    assign a1 = 18'sh0_051E ; // 0.02
-    assign b = 18'sh0_3333 ; // 0.2
-    assign c = 18'sh3_8000 ; // -0.5
-    assign d = 18'sh0_051E ; // 0.02
-    assign a2 = 18'sh0_041E ; // slightly lower than 0.02
+    // dt = (2 >> 9)
+    // v1(n + 1) = v1(n) + dt*v2(n)
+    assign v1_new = v1 + (v2 >>> 9);
 
-    iz_neuron burst1(.v_membrane_o(v1),
-                     .membrane_recovery_o(u1),
-                     .spike_o(spike1),
-                     .a(a1),
-                     .b(b),
-                     .c(c),
-                     .d(d),
-                     .I(I1 - (spike2 ? 18'h0_8000 : 0)),
-                     .clock_i(neuron_clock),
-                     .reset_i(neuron_reset));
+    // v2(n + 1) = v2(n) + dt*(-k/m*v1(n) - d/m*v2(n))
+    signed_mult K_M(v1xK_M, v1, 18'h1_0000);
+    signed_mult D_M(v2xD_M, v2, 18'h0_0800);
 
-    iz_neuron burst2(.v_membrane_o(v2),
-                     .membrane_recovery_o(),
-                     .spike_o(spike2),
-                     .a(a2),
-                     .b(b),
-                     .c(c),
-                     .d(d),
-                     .I(I2 - (spike1 ? 18'h0_8000 : 0)),
-                     .clock_i(neuron_clock),
-                     .reset_i(neuron_reset));
+    signed_mult sine_gain_inst(.product_o(sine_input),
+                               .a_i({sine_out[15], sine_out[15], sine_out}),
+                               .b_i(sine_gain));
+
+    assign v2_new = (v2 - ((v1xK_M + v2xD_M) >>> 9) + (sine_input >>> 9));
+
+    always @(posedge CLOCK_50) begin
+        if ((v1_new >= 0) && (v1 < 0)) begin
+            phase <= dds_accum[31:24];
+        end
+        if (dds_accum[31:24] == (8'h40 + phase)) begin
+            amplitude <= v1[16:9];
+        end
+    end
+
+    hex_digit h0(HEX0, phase[3:0]);
+    hex_digit h1(HEX1, phase[7:4]);
+    hex_digit h4(HEX4, amplitude[3:0]);
+    hex_digit h5(HEX5, amplitude[7:4]);
+
+    // TODO(brendan): connect DRAM
+    second_order_system_nios2 nios2_sys_inst(.clk_clk(CLOCK_50),
+                                             .led_pio_external_connection_export(LEDG[7:0]),
+                                             .reset_reset_n(KEY[0]),
+                                             .sdram_wire_addr(),
+                                             .sdram_wire_ba(),
+                                             .sdram_wire_cas_n(),
+                                             .sdram_wire_cke(),
+                                             .sdram_wire_cs_n(),
+                                             .sdram_wire_dq(),
+                                             .sdram_wire_dqm(),
+                                             .sdram_wire_ras_n(),
+                                             .sdram_wire_we_n());
 
 endmodule
 
@@ -425,63 +450,296 @@ module Reset_Delay(input wire clock_i,
 
 endmodule
 
-module iz_neuron(output wire signed [17:0] v_membrane_o,
-                 output wire signed [17:0] membrane_recovery_o,
-                 output reg spike_o,
-                 input wire signed [17:0] a,
-                 input wire signed [17:0] b,
-                 input wire signed [17:0] c,
-                 input wire signed [17:0] d,
-                 input wire signed [17:0] I,
-                 input wire clock_i,
-                 input wire reset_i);
-
-    wire signed [17:0] p;
-    wire signed [17:0] c14;
-    reg signed [17:0] v1;
-    reg signed [17:0] u1;
-    wire signed [17:0] v1_new;
-    wire signed [17:0] u1_new;
-    wire signed [17:0] v1xv1;
-    wire signed [17:0] v1xb;
-    wire signed [17:0] du1;
-    wire signed [17:0] u1_reset;
-
-    assign p = 18'sh0_4CCC;
-    assign c14 = 18'sh1_6666;
-
-    assign v_membrane_o = v1;
-    assign membrane_recovery_o = u1;
+module sync_rom(output reg [15:0] sine_o,
+                input wire clock_i,
+                input wire [7:0] address_i);
 
     always @(posedge clock_i) begin
-        if (reset_i) begin
-            v1 <= 18'sh3_4CCD;
-            u1 <= 18'sh3_CCCD;
-            spike_o <= 0;
-        end
-        else begin
-            if (v1 > p) begin
-                v1 <= c;
-                u1 <= u1_reset;
-                spike_o <= 1;
-            end
-            else begin
-                v1 <= v1_new;
-                u1 <= u1_new;
-                spike_o <= 0;
-            end
-        end
+        case (address_i)
+            8'h00: sine_o <= 16'h0000;
+            8'h01: sine_o <= 16'h0192;
+            8'h02: sine_o <= 16'h0323;
+            8'h03: sine_o <= 16'h04b5;
+            8'h04: sine_o <= 16'h0645;
+            8'h05: sine_o <= 16'h07d5;
+            8'h06: sine_o <= 16'h0963;
+            8'h07: sine_o <= 16'h0af0;
+            8'h08: sine_o <= 16'h0c7c;
+            8'h09: sine_o <= 16'h0e05;
+            8'h0a: sine_o <= 16'h0f8c;
+            8'h0b: sine_o <= 16'h1111;
+            8'h0c: sine_o <= 16'h1293;
+            8'h0d: sine_o <= 16'h1413;
+            8'h0e: sine_o <= 16'h158f;
+            8'h0f: sine_o <= 16'h1708;
+            8'h10: sine_o <= 16'h187d;
+            8'h11: sine_o <= 16'h19ef;
+            8'h12: sine_o <= 16'h1b5c;
+            8'h13: sine_o <= 16'h1cc5;
+            8'h14: sine_o <= 16'h1e2a;
+            8'h15: sine_o <= 16'h1f8b;
+            8'h16: sine_o <= 16'h20e6;
+            8'h17: sine_o <= 16'h223c;
+            8'h18: sine_o <= 16'h238d;
+            8'h19: sine_o <= 16'h24d9;
+            8'h1a: sine_o <= 16'h261f;
+            8'h1b: sine_o <= 16'h275f;
+            8'h1c: sine_o <= 16'h2899;
+            8'h1d: sine_o <= 16'h29cc;
+            8'h1e: sine_o <= 16'h2afa;
+            8'h1f: sine_o <= 16'h2c20;
+            8'h20: sine_o <= 16'h2d40;
+            8'h21: sine_o <= 16'h2e59;
+            8'h22: sine_o <= 16'h2f6b;
+            8'h23: sine_o <= 16'h3075;
+            8'h24: sine_o <= 16'h3178;
+            8'h25: sine_o <= 16'h3273;
+            8'h26: sine_o <= 16'h3366;
+            8'h27: sine_o <= 16'h3452;
+            8'h28: sine_o <= 16'h3535;
+            8'h29: sine_o <= 16'h3611;
+            8'h2a: sine_o <= 16'h36e4;
+            8'h2b: sine_o <= 16'h37ae;
+            8'h2c: sine_o <= 16'h3870;
+            8'h2d: sine_o <= 16'h3929;
+            8'h2e: sine_o <= 16'h39da;
+            8'h2f: sine_o <= 16'h3a81;
+            8'h30: sine_o <= 16'h3b1f;
+            8'h31: sine_o <= 16'h3bb5;
+            8'h32: sine_o <= 16'h3c41;
+            8'h33: sine_o <= 16'h3cc4;
+            8'h34: sine_o <= 16'h3d3d;
+            8'h35: sine_o <= 16'h3dad;
+            8'h36: sine_o <= 16'h3e14;
+            8'h37: sine_o <= 16'h3e70;
+            8'h38: sine_o <= 16'h3ec4;
+            8'h39: sine_o <= 16'h3f0d;
+            8'h3a: sine_o <= 16'h3f4d;
+            8'h3b: sine_o <= 16'h3f83;
+            8'h3c: sine_o <= 16'h3fb0;
+            8'h3d: sine_o <= 16'h3fd2;
+            8'h3e: sine_o <= 16'h3feb;
+            8'h3f: sine_o <= 16'h3ffa;
+            8'h40: sine_o <= 16'h3fff;
+            8'h41: sine_o <= 16'h3ffa;
+            8'h42: sine_o <= 16'h3feb;
+            8'h43: sine_o <= 16'h3fd2;
+            8'h44: sine_o <= 16'h3fb0;
+            8'h45: sine_o <= 16'h3f83;
+            8'h46: sine_o <= 16'h3f4d;
+            8'h47: sine_o <= 16'h3f0d;
+            8'h48: sine_o <= 16'h3ec4;
+            8'h49: sine_o <= 16'h3e70;
+            8'h4a: sine_o <= 16'h3e14;
+            8'h4b: sine_o <= 16'h3dad;
+            8'h4c: sine_o <= 16'h3d3d;
+            8'h4d: sine_o <= 16'h3cc4;
+            8'h4e: sine_o <= 16'h3c41;
+            8'h4f: sine_o <= 16'h3bb5;
+            8'h50: sine_o <= 16'h3b1f;
+            8'h51: sine_o <= 16'h3a81;
+            8'h52: sine_o <= 16'h39da;
+            8'h53: sine_o <= 16'h3929;
+            8'h54: sine_o <= 16'h3870;
+            8'h55: sine_o <= 16'h37ae;
+            8'h56: sine_o <= 16'h36e4;
+            8'h57: sine_o <= 16'h3611;
+            8'h58: sine_o <= 16'h3535;
+            8'h59: sine_o <= 16'h3452;
+            8'h5a: sine_o <= 16'h3366;
+            8'h5b: sine_o <= 16'h3273;
+            8'h5c: sine_o <= 16'h3178;
+            8'h5d: sine_o <= 16'h3075;
+            8'h5e: sine_o <= 16'h2f6b;
+            8'h5f: sine_o <= 16'h2e59;
+            8'h60: sine_o <= 16'h2d40;
+            8'h61: sine_o <= 16'h2c20;
+            8'h62: sine_o <= 16'h2afa;
+            8'h63: sine_o <= 16'h29cc;
+            8'h64: sine_o <= 16'h2899;
+            8'h65: sine_o <= 16'h275f;
+            8'h66: sine_o <= 16'h261f;
+            8'h67: sine_o <= 16'h24d9;
+            8'h68: sine_o <= 16'h238d;
+            8'h69: sine_o <= 16'h223c;
+            8'h6a: sine_o <= 16'h20e6;
+            8'h6b: sine_o <= 16'h1f8b;
+            8'h6c: sine_o <= 16'h1e2a;
+            8'h6d: sine_o <= 16'h1cc5;
+            8'h6e: sine_o <= 16'h1b5c;
+            8'h6f: sine_o <= 16'h19ef;
+            8'h70: sine_o <= 16'h187d;
+            8'h71: sine_o <= 16'h1708;
+            8'h72: sine_o <= 16'h158f;
+            8'h73: sine_o <= 16'h1413;
+            8'h74: sine_o <= 16'h1293;
+            8'h75: sine_o <= 16'h1111;
+            8'h76: sine_o <= 16'h0f8c;
+            8'h77: sine_o <= 16'h0e05;
+            8'h78: sine_o <= 16'h0c7c;
+            8'h79: sine_o <= 16'h0af0;
+            8'h7a: sine_o <= 16'h0963;
+            8'h7b: sine_o <= 16'h07d5;
+            8'h7c: sine_o <= 16'h0645;
+            8'h7d: sine_o <= 16'h04b5;
+            8'h7e: sine_o <= 16'h0323;
+            8'h7f: sine_o <= 16'h0192;
+            8'h80: sine_o <= 16'h0000;
+            8'h81: sine_o <= 16'hfe6e;
+            8'h82: sine_o <= 16'hfcdd;
+            8'h83: sine_o <= 16'hfb4b;
+            8'h84: sine_o <= 16'hf9bb;
+            8'h85: sine_o <= 16'hf82b;
+            8'h86: sine_o <= 16'hf69d;
+            8'h87: sine_o <= 16'hf510;
+            8'h88: sine_o <= 16'hf384;
+            8'h89: sine_o <= 16'hf1fb;
+            8'h8a: sine_o <= 16'hf074;
+            8'h8b: sine_o <= 16'heeef;
+            8'h8c: sine_o <= 16'hed6d;
+            8'h8d: sine_o <= 16'hebed;
+            8'h8e: sine_o <= 16'hea71;
+            8'h8f: sine_o <= 16'he8f8;
+            8'h90: sine_o <= 16'he783;
+            8'h91: sine_o <= 16'he611;
+            8'h92: sine_o <= 16'he4a4;
+            8'h93: sine_o <= 16'he33b;
+            8'h94: sine_o <= 16'he1d6;
+            8'h95: sine_o <= 16'he075;
+            8'h96: sine_o <= 16'hdf1a;
+            8'h97: sine_o <= 16'hddc4;
+            8'h98: sine_o <= 16'hdc73;
+            8'h99: sine_o <= 16'hdb27;
+            8'h9a: sine_o <= 16'hd9e1;
+            8'h9b: sine_o <= 16'hd8a1;
+            8'h9c: sine_o <= 16'hd767;
+            8'h9d: sine_o <= 16'hd634;
+            8'h9e: sine_o <= 16'hd506;
+            8'h9f: sine_o <= 16'hd3e0;
+            8'ha0: sine_o <= 16'hd2c0;
+            8'ha1: sine_o <= 16'hd1a7;
+            8'ha2: sine_o <= 16'hd095;
+            8'ha3: sine_o <= 16'hcf8b;
+            8'ha4: sine_o <= 16'hce88;
+            8'ha5: sine_o <= 16'hcd8d;
+            8'ha6: sine_o <= 16'hcc9a;
+            8'ha7: sine_o <= 16'hcbae;
+            8'ha8: sine_o <= 16'hcacb;
+            8'ha9: sine_o <= 16'hc9ef;
+            8'haa: sine_o <= 16'hc91c;
+            8'hab: sine_o <= 16'hc852;
+            8'hac: sine_o <= 16'hc790;
+            8'had: sine_o <= 16'hc6d7;
+            8'hae: sine_o <= 16'hc626;
+            8'haf: sine_o <= 16'hc57f;
+            8'hb0: sine_o <= 16'hc4e1;
+            8'hb1: sine_o <= 16'hc44b;
+            8'hb2: sine_o <= 16'hc3bf;
+            8'hb3: sine_o <= 16'hc33c;
+            8'hb4: sine_o <= 16'hc2c3;
+            8'hb5: sine_o <= 16'hc253;
+            8'hb6: sine_o <= 16'hc1ec;
+            8'hb7: sine_o <= 16'hc190;
+            8'hb8: sine_o <= 16'hc13c;
+            8'hb9: sine_o <= 16'hc0f3;
+            8'hba: sine_o <= 16'hc0b3;
+            8'hbb: sine_o <= 16'hc07d;
+            8'hbc: sine_o <= 16'hc050;
+            8'hbd: sine_o <= 16'hc02e;
+            8'hbe: sine_o <= 16'hc015;
+            8'hbf: sine_o <= 16'hc006;
+            8'hc0: sine_o <= 16'hc001;
+            8'hc1: sine_o <= 16'hc006;
+            8'hc2: sine_o <= 16'hc015;
+            8'hc3: sine_o <= 16'hc02e;
+            8'hc4: sine_o <= 16'hc050;
+            8'hc5: sine_o <= 16'hc07d;
+            8'hc6: sine_o <= 16'hc0b3;
+            8'hc7: sine_o <= 16'hc0f3;
+            8'hc8: sine_o <= 16'hc13c;
+            8'hc9: sine_o <= 16'hc190;
+            8'hca: sine_o <= 16'hc1ec;
+            8'hcb: sine_o <= 16'hc253;
+            8'hcc: sine_o <= 16'hc2c3;
+            8'hcd: sine_o <= 16'hc33c;
+            8'hce: sine_o <= 16'hc3bf;
+            8'hcf: sine_o <= 16'hc44b;
+            8'hd0: sine_o <= 16'hc4e1;
+            8'hd1: sine_o <= 16'hc57f;
+            8'hd2: sine_o <= 16'hc626;
+            8'hd3: sine_o <= 16'hc6d7;
+            8'hd4: sine_o <= 16'hc790;
+            8'hd5: sine_o <= 16'hc852;
+            8'hd6: sine_o <= 16'hc91c;
+            8'hd7: sine_o <= 16'hc9ef;
+            8'hd8: sine_o <= 16'hcacb;
+            8'hd9: sine_o <= 16'hcbae;
+            8'hda: sine_o <= 16'hcc9a;
+            8'hdb: sine_o <= 16'hcd8d;
+            8'hdc: sine_o <= 16'hce88;
+            8'hdd: sine_o <= 16'hcf8b;
+            8'hde: sine_o <= 16'hd095;
+            8'hdf: sine_o <= 16'hd1a7;
+            8'he0: sine_o <= 16'hd2c0;
+            8'he1: sine_o <= 16'hd3e0;
+            8'he2: sine_o <= 16'hd506;
+            8'he3: sine_o <= 16'hd634;
+            8'he4: sine_o <= 16'hd767;
+            8'he5: sine_o <= 16'hd8a1;
+            8'he6: sine_o <= 16'hd9e1;
+            8'he7: sine_o <= 16'hdb27;
+            8'he8: sine_o <= 16'hdc73;
+            8'he9: sine_o <= 16'hddc4;
+            8'hea: sine_o <= 16'hdf1a;
+            8'heb: sine_o <= 16'he075;
+            8'hec: sine_o <= 16'he1d6;
+            8'hed: sine_o <= 16'he33b;
+            8'hee: sine_o <= 16'he4a4;
+            8'hef: sine_o <= 16'he611;
+            8'hf0: sine_o <= 16'he783;
+            8'hf1: sine_o <= 16'he8f8;
+            8'hf2: sine_o <= 16'hea71;
+            8'hf3: sine_o <= 16'hebed;
+            8'hf4: sine_o <= 16'hed6d;
+            8'hf5: sine_o <= 16'heeef;
+            8'hf6: sine_o <= 16'hf074;
+            8'hf7: sine_o <= 16'hf1fb;
+            8'hf8: sine_o <= 16'hf384;
+            8'hf9: sine_o <= 16'hf510;
+            8'hfa: sine_o <= 16'hf69d;
+            8'hfb: sine_o <= 16'hf82b;
+            8'hfc: sine_o <= 16'hf9bb;
+            8'hfd: sine_o <= 16'hfb4b;
+            8'hfe: sine_o <= 16'hfcdd;
+            8'hff: sine_o <= 16'hfe6e;
+            default: sine_o <= 16'h0;
+        endcase
     end
+endmodule
 
-    // dt = 1/16 or (1 >> 4)
-    // v1(n+1) = v1(n) + (v1(n)^2) + 5/4*v1(n) +1.40/4 - u1(n)/4 + I/4)/4
-    signed_mult v1sq(v1xv1, v1, v1);
-    assign v1_new = v1 + ((v1xv1 + v1 + (v1 >>> 2) + (c14 >>> 2) - (u1 >>> 2) + (I >>> 2)) >>> 2);
+module hex_digit(output reg [6:0] segments,
+                 input wire [3:0] num);
 
-    // u1(n+1) = u1 + dt*a*(b*v1(n) - u1(n))
-    signed_mult bb(v1xb, v1, b);
-    signed_mult aa(du1, (v1xb - u1), a);
-    assign u1_new = u1 + (du1 >>> 4);
-    assign u1_reset = u1 + d;
+    always @(num) begin
+        case (num)
+            4'h0: segments <= 7'b1000000;
+            4'h1: segments <= 7'b1111001;
+            4'h2: segments <= 7'b0100100;
+            4'h3: segments <= 7'b0110000;
+            4'h4: segments <= 7'b0011001;
+            4'h5: segments <= 7'b0010010;
+            4'h6: segments <= 7'b0000010;
+            4'h7: segments <= 7'b1111000;
+            4'h8: segments <= 7'b0000000;
+            4'h9: segments <= 7'b0010000;
+            4'ha: segments <= 7'b0001000;
+            4'hb: segments <= 7'b0000011;
+            4'hc: segments <= 7'b1000110;
+            4'hd: segments <= 7'b0100001;
+            4'he: segments <= 7'b0000110;
+            4'hf: segments <= 7'b0001110;
+            default: segments <= 7'b1111111;
+        endcase
+    end
 
 endmodule
