@@ -7,7 +7,7 @@ use IEEE.numeric_std.all;     -- unsigned type and various arith ops.
 
 entity my_ent is
         port ( A, B, C : in std_logic;
-               F : out std_logic);
+               F : out std_logic );
 end my_ent;
 
 architecture my_arch of my_ent is
