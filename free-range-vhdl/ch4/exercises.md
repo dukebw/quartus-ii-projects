@@ -190,3 +190,23 @@ begin
                 '0' when others;
 end my_arch;
 ```
+
+
+## Chapter 4 Exercises
+
+
+In the following, '.' represents logical AND, and '+' represents logical OR.
+1.
+
+a) F(A, B) = ~A.B + A + A.~B
+
+```
+        +-------+
+        |       |
+A +---->+ ckt1a +---> F
+        |       |
+B +---->+       |
+        +-------+
+```
+
+See ckt1a.vhdl.
