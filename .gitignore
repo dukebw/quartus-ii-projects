@@ -10,3 +10,5 @@
 *.qip
 *.qsys
 *.sopcinfo
+*.vcd
+*.cf
